@@ -1,34 +1,14 @@
 import wpilib
-from wpilib import DriverStation
 from wpilib.drive import DifferentialDrive
-from wpilib import SmartDashboard
 from networktables import NetworkTables
-from navx import AHRS
 import logging
-
+from wpilib import DriverStation
+from math import *
 
 class MyRobot(wpilib.TimedRobot):
 
-    # values for navx
-    kP = 0.03
-    kI = 0.00
-    kD = 0.00
-    kF = 0.00
-
-    kToleranceDegrees = 2.0
-
     def robotInit(self):
         """Robot initialization function"""
-        self.ahrs = AHRS.create_spi()
-
-        turnController = wpilib.PIDController(self.kP, self.kI, self.kD, self.kF, self.ahrs, output=self)
-        turnController.setInputRange(-180, 180)
-        turnController.setOutputRange(-0.6, 0.6)
-        turnController.setAbsoluteTolerance(self.kToleranceDegrees)
-        turnController.setContinuous(True)
-
-        self.turnController = turnController
-        self.rotateToAngleRate = 0
 
         # object that handles basic drive operations
         self.rearLeftMotor = wpilib.Spark(0)
@@ -47,12 +27,13 @@ class MyRobot(wpilib.TimedRobot):
         self.timer = wpilib.Timer()
 
         # joystick 0, 1, and 2 on the driver station
-        self.left_stick = wpilib.Joystick(0)
-        self.right_stick = wpilib.Joystick(1)
-        self.joystick = wpilib.Joystick(2)
+        self.leftStick = wpilib.Joystick(0)
+        self.rightStick = wpilib.Joystick(1)
+        self.xbox = wpilib.Joystick(2)
 
-        # initialization of the FMS
-        self.DS = DriverStation.getInstance()
+        # Button box
+        self.buttonBox = wpilib.Joystick(3)
+        self.buttonStatus = False
 
         # pneumatics init
         self.Compressor = wpilib.Compressor(0)
@@ -61,27 +42,29 @@ class MyRobot(wpilib.TimedRobot):
         self.DoubleSolenoid = wpilib.DoubleSolenoid(0, 1)
         self.Compressor.start()
 
-        # logging and smart dashboard
+        self.sensor = wpilib.AnalogInput(0)
+        self.sensor.getVoltage()
+
+        '''Smart Dashboard'''
+        # connection for logging & Smart Dashboard
         logging.basicConfig(level=logging.DEBUG)
         self.sd = NetworkTables.getTable('SmartDashboard')
         NetworkTables.initialize(server='10.99.91.2')
+
+        self.ds = DriverStation.getInstance()
+        self.sd.putString("TX2State: ", "Enable")
 
     def autonomousInit(self):
         """This function is run once each time the robot enters autonomous mode."""
         self.timer.reset()
         self.timer.start()
 
-        self.ahrs.reset()
+        self.Compressor.stop()
+
+        self.buttonStatus = False
 
     def autonomousPeriodic(self):
         """This function is called periodically during autonomous."""
-        # gets randomization of field elements
-        gameData = self.DS.getGameSpecificMessage()
-        # gets location of robot on the field
-        position = self.DS.getLocation()
-
-        # SmartDashboard modules
-        self.sd.putNumber("Gyro angle: ", self.ahrs.getAngle())
 
         def gearTest():
             if self.timer.get() <= 1800:
@@ -97,79 +80,53 @@ class MyRobot(wpilib.TimedRobot):
                 self.frontRightMotor.set(0)
                 self.rearRightMotor.set(0)
 
-        def navxTest():
-            if self.ahrs.getAngle() < 90.0:
-                self.drive.tankDrive(0.6, -0.6)
-            else:
-                self.drive.tankDrive(0, 0)
+        def toggleTest():
+            if self.timer.get() <= 3:
+                self.drive.tankDrive(0.5, 0.5)
+            elif self.timer.get() > 3:
+                self.buttonStatus = False
+                self.timer.reset()
 
-        if gameData == "RRR":  # and position == 3:
-            navxTest()
-        else:
-            navxTest()
+        if self.buttonBox.getRawButtonPressed(7):
+            self.buttonStatus = not self.buttonStatus
 
+        if self.buttonStatus is True:
+            toggleTest()
+
+        self.sd.putBoolean("Button Status: ", self.buttonStatus)
 
     def teleopInit(self):
         """Executed at the start of teleop mode"""
-        self.toggle = 0
-        self.speed = 0.5
-
-        self.ahrs.reset()
+        self.drive.setSafetyEnabled(True)
 
     def teleopPeriodic(self):
         """Runs the motors with tank steering"""
-        # smart dashboard
-        self.sd.putNumber("Gyro angle: ", self.ahrs.getAngle())
+        self.driveAxis = self.rightStick.getRawAxis(1)
+        self.rotateAxis = self.rightStick.getRawAxis(2)
 
-        leftAxis = self.left_stick.getRawAxis(1)
-        rightAxis = self.right_stick.getRawAxis(1)
+        # # drives drive system using tank steering
+        # if self.DoubleSolenoidOne.get() == 1:  # if on high gear
+        #     self.divisor = 1.2  # 90% of high speed
+        # elif self.DoubleSolenoidOne.get() == 2:  # if on low gear
+        #     self.divisor = 1.2  # normal slow speed
+        # else:
+        #     self.divisor = 1.0
 
-        if self.joystick.getRawButton(3):
-            self.right.set(0.5)
+        if self.driveAxis != 0:
+            self.leftSign = self.driveAxis / fabs(self.driveAxis)
         else:
-            self.right.set(0)
+            self.leftSign = 0
 
-        rotateToAngle = False
-        if self.joystick.getRawButton(7):
-            self.ahrs.reset()
-
-        if self.joystick.getRawButton(4):
-            self.turnController.setSetpoint(0.0)
-            rotateToAngle = True
-        elif self.joystick.getRawButton(2):
-            self.turnController.setSetpoint(90.0)
-            rotateToAngle = True
-        elif self.joystick.getRawButton(3):
-            self.turnController.setSetpoint(180.0)
-            rotateToAngle = True
-        elif self.joystick.getRawButton(1):
-            self.turnController.setSetpoint(-90.0)
-            rotateToAngle = True
-
-        if rotateToAngle:
-            self.turnController.enable()
-            currentRotationRate = self.rotateToAngleRate
-        else:
-            self.turnController.disable()
-            currentRotationRate = self.joystick.getX()
-        
-
-        # pneumatics control
-        if self.right_stick.getRawButton(1):      # open claw
+        if self.xbox.getRawButton(9):
+            self.Compressor.stop()
+        elif self.xbox.getRawButton(10):
+            self.Compressor.start()
+        elif self.xbox.getRawButton(3):  # open claw
             self.DoubleSolenoid.set(wpilib.DoubleSolenoid.Value.kForward)
-        elif self.left_stick.getRawButton(1):    # close claw
+        elif self.xbox.getRawButton(2):  # close claw
             self.DoubleSolenoid.set(wpilib.DoubleSolenoid.Value.kReverse)
 
-        if self.joystick.getRawButton(9):  # turn on compressor
-            self.Compressor.stop()
-        elif self.joystick.getRawButton(10):  # turn off compressor
-            self.Compressor.start()
-
-        self.drive.tankDrive(-leftAxis/1.25, -rightAxis/1.25)
-        self.drive.arcadeDrive(self.joystick.getY(), currentRotationRate)
-
-    def pidWrite(self, output):
-        self.rotateToAngleRate = output
+        self.drive.arcadeDrive(-self.driveAxis / 1.25, self.rotateAxis / 1.25)
 
 
 if __name__ == '__main__':

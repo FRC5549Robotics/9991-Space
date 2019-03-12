@@ -5,6 +5,7 @@ import logging
 from wpilib import DriverStation
 from math import *
 
+
 class MyRobot(wpilib.TimedRobot):
 
     def robotInit(self):
@@ -52,7 +53,7 @@ class MyRobot(wpilib.TimedRobot):
         NetworkTables.initialize(server='10.99.91.2')
 
         self.ds = DriverStation.getInstance()
-        self.sd.putString("TX2State: ", "Enable")
+        self.sd.putString("TX2State", "Disable")
 
     def autonomousInit(self):
         """This function is run once each time the robot enters autonomous mode."""
@@ -95,12 +96,19 @@ class MyRobot(wpilib.TimedRobot):
 
         self.sd.putBoolean("Button Status: ", self.buttonStatus)
 
+    def disabledInit(self):
+        self.sd.putString("TX2State", "Disable")
+
     def teleopInit(self):
         """Executed at the start of teleop mode"""
         self.drive.setSafetyEnabled(True)
 
     def teleopPeriodic(self):
         """Runs the motors with tank steering"""
+
+        self.sd.putString("TX2State", "Enable")
+        self.sd.getString("TX2Num", "Not Found")
+
         self.driveAxis = self.rightStick.getRawAxis(1)
         self.rotateAxis = self.rightStick.getRawAxis(2)
 
@@ -116,6 +124,10 @@ class MyRobot(wpilib.TimedRobot):
             self.leftSign = self.driveAxis / fabs(self.driveAxis)
         else:
             self.leftSign = 0
+        if self.rotateAxis != 0:
+            self.rightSign = self.rotateAxis / fabs(self.rotateAxis)
+        else:
+            self.rightSign = 0
 
         if self.xbox.getRawButton(9):
             self.Compressor.stop()
@@ -126,7 +138,8 @@ class MyRobot(wpilib.TimedRobot):
         elif self.xbox.getRawButton(2):  # close claw
             self.DoubleSolenoid.set(wpilib.DoubleSolenoid.Value.kReverse)
 
-        self.drive.arcadeDrive(-self.driveAxis / 1.25, self.rotateAxis / 1.25)
+        self.drive.arcadeDrive(-self.leftSign * (self.driveAxis ** 2), self.rightSign * (self.rotateAxis ** 2))
+
 
 
 if __name__ == '__main__':

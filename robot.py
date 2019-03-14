@@ -4,6 +4,8 @@ from networktables import NetworkTables
 import logging
 from wpilib import DriverStation
 from math import *
+from robotpy_ext.control.button_debouncer import ButtonDebouncer
+from robotpy_ext.control.toggle import Toggle
 
 
 class MyRobot(wpilib.TimedRobot):
@@ -31,6 +33,8 @@ class MyRobot(wpilib.TimedRobot):
         self.leftStick = wpilib.Joystick(0)
         self.rightStick = wpilib.Joystick(1)
         self.xbox = wpilib.Joystick(2)
+
+        self.testButton = Toggle(self.rightStick, 12)
 
         # Button box
         self.buttonBox = wpilib.Joystick(3)
@@ -62,10 +66,25 @@ class MyRobot(wpilib.TimedRobot):
 
         self.Compressor.stop()
 
-        self.buttonStatus = False
-
     def autonomousPeriodic(self):
         """This function is called periodically during autonomous."""
+
+        # if self.rightStick.getRawButtonPressed(12):
+        #     self.buttonStatus = not self.buttonStatus
+        #
+        # if self.buttonStatus is True:
+        #     if self.timer.get() <= 10:
+        #         self.drive.tankDrive(0.5, 0.5)
+        #     elif self.timer.get() >= 10:
+        #         self.drive.tankDrive(0, 0)
+        #         self.buttonStatus = False
+
+        if self.testButton.on:
+            self.drive.tankDrive(0.5, 0.5)
+        elif self.testButton.off:
+            self.drive.tankDrive(-0.5, -0.5)
+        else:
+            self.drive.tankDrive(0, 0)
 
         def gearTest():
             if self.timer.get() <= 1800:
@@ -93,8 +112,6 @@ class MyRobot(wpilib.TimedRobot):
 
         if self.buttonStatus is True:
             toggleTest()
-
-        self.sd.putBoolean("Button Status: ", self.buttonStatus)
 
     def disabledInit(self):
         self.sd.putString("TX2State", "Disable")

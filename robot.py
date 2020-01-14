@@ -1,163 +1,79 @@
 import wpilib
 from wpilib.drive import DifferentialDrive
-from networktables import NetworkTables
-import logging
-from wpilib import DriverStation
-from math import *
-from robotpy_ext.control.button_debouncer import ButtonDebouncer
 from robotpy_ext.control.toggle import Toggle
+from ctre import *
 
 
 class MyRobot(wpilib.TimedRobot):
 
     def robotInit(self):
-        """Robot initialization function"""
+        self.frontLeft = wpilib.Spark(1)
+        self.rearLeft = wpilib.Spark(2)
+        self.frontRight = wpilib.Spark(0)
+        self.rearRight = wpilib.Spark(3)
 
-        # object that handles basic drive operations
-        self.rearLeftMotor = wpilib.Spark(0)
-        self.frontLeftMotor = wpilib.Spark(1)
-        self.frontRightMotor = wpilib.Spark(3)
-        self.rearRightMotor = wpilib.Spark(2)
+        self.motor1 = WPI_TalonSRX(4)
+        self.motor2 = WPI_TalonSRX(5)
+        self.motor3 = WPI_TalonSRX(6)
+        self.motor4 = WPI_TalonSRX(7)
 
-        # defining motor groups
-        self.left = wpilib.SpeedControllerGroup(self.frontLeftMotor, self.rearLeftMotor)
-        self.right = wpilib.SpeedControllerGroup(self.frontRightMotor, self.rearRightMotor)
+        self.shooter = wpilib.SpeedControllerGroup(self.motor1, self.motor2, self.motor3, self.motor4)
 
-        self.drive = DifferentialDrive(self.left, self.right)
-        self.drive.setExpiration(0.1)
+        self.leftSide = wpilib.SpeedControllerGroup(self.frontLeft, self.rearLeft)
+        self.rightSide = wpilib.SpeedControllerGroup(self.frontRight, self.rearRight)
 
-        # defines timer for autonomous
+        self.drive = DifferentialDrive(self.leftSide, self.rightSide)
         self.timer = wpilib.Timer()
-
-        # joystick 0, 1, and 2 on the driver station
-        self.leftStick = wpilib.Joystick(0)
-        self.rightStick = wpilib.Joystick(1)
+        self.leftJoystick = wpilib.Joystick(0)
+        self.rightJoystick = wpilib.Joystick(1)
         self.xbox = wpilib.Joystick(2)
 
-        self.testButton = Toggle(self.rightStick, 12)
+        self.driveButtonStatus = Toggle(self.leftJoystick, 2)
 
-        # Button box
-        self.buttonBox = wpilib.Joystick(3)
-        self.buttonStatus = False
+        self.ultrasonic = wpilib.AnalogInput(0)
 
-        # pneumatics init
+        ''' Pneumatic Initialization '''
         self.Compressor = wpilib.Compressor(0)
         self.Compressor.setClosedLoopControl(True)
         self.enable = self.Compressor.getPressureSwitchValue()
-        self.DoubleSolenoid = wpilib.DoubleSolenoid(0, 1)
-        self.Compressor.start()
-
-        self.sensor = wpilib.AnalogInput(0)
-        self.sensor.getVoltage()
-
-        '''Smart Dashboard'''
-        # connection for logging & Smart Dashboard
-        logging.basicConfig(level=logging.DEBUG)
-        self.sd = NetworkTables.getTable('SmartDashboard')
-        NetworkTables.initialize(server='10.99.91.2')
-
-        self.ds = DriverStation.getInstance()
-        self.sd.putString("TX2State", "Disable")
+        self.DoubleSolenoidGear = wpilib.DoubleSolenoid(0, 1)  # gear shifting
+        self.Compressor.start()  # starts compressor to intake air
 
     def autonomousInit(self):
-        """This function is run once each time the robot enters autonomous mode."""
         self.timer.reset()
         self.timer.start()
 
-        self.Compressor.stop()
-
     def autonomousPeriodic(self):
-        """This function is called periodically during autonomous."""
-
-        # if self.rightStick.getRawButtonPressed(12):
-        #     self.buttonStatus = not self.buttonStatus
-        #
-        # if self.buttonStatus is True:
-        #     if self.timer.get() <= 10:
-        #         self.drive.tankDrive(0.5, 0.5)
-        #     elif self.timer.get() >= 10:
-        #         self.drive.tankDrive(0, 0)
-        #         self.buttonStatus = False
-
-        if self.testButton.on:
-            self.drive.tankDrive(0.5, 0.5)
-        elif self.testButton.off:
-            self.drive.tankDrive(-0.5, -0.5)
+        if self.ultrasonic.getVoltage() > 0.250:
+            self.drive.tankDrive(0.5, 0.45)
         else:
             self.drive.tankDrive(0, 0)
 
-        def gearTest():
-            if self.timer.get() <= 1800:
-                self.Compressor.start()
-                self.rearLeftMotor.set(0.85)
-                self.frontLeftMotor.set(0.85)
-                self.frontRightMotor.set(0.85)
-                self.rearRightMotor.set(0.85)
-            else:
-                self.Compressor.stop()
-                self.rearLeftMotor.set(0)
-                self.frontLeftMotor.set(0)
-                self.frontRightMotor.set(0)
-                self.rearRightMotor.set(0)
-
-        def toggleTest():
-            if self.timer.get() <= 3:
-                self.drive.tankDrive(0.5, 0.5)
-            elif self.timer.get() > 3:
-                self.buttonStatus = False
-                self.timer.reset()
-
-        if self.buttonBox.getRawButtonPressed(7):
-            self.buttonStatus = not self.buttonStatus
-
-        if self.buttonStatus is True:
-            toggleTest()
-
-    def disabledInit(self):
-        self.sd.putString("TX2State", "Disable")
-
     def teleopInit(self):
-        """Executed at the start of teleop mode"""
-        self.drive.setSafetyEnabled(True)
+        ''' function that is run at the beginning of the tele-operated phase '''
+        pass
 
     def teleopPeriodic(self):
-        """Runs the motors with tank steering"""
 
-        self.sd.putString("TX2State", "Enable")
-        self.sd.getString("TX2Num", "Not Found")
-
-        self.driveAxis = self.rightStick.getRawAxis(1)
-        self.rotateAxis = self.rightStick.getRawAxis(2)
-
-        # # drives drive system using tank steering
-        # if self.DoubleSolenoidOne.get() == 1:  # if on high gear
-        #     self.divisor = 1.2  # 90% of high speed
-        # elif self.DoubleSolenoidOne.get() == 2:  # if on low gear
-        #     self.divisor = 1.2  # normal slow speed
-        # else:
-        #     self.divisor = 1.0
-
-        if self.driveAxis != 0:
-            self.leftSign = self.driveAxis / fabs(self.driveAxis)
-        else:
-            self.leftSign = 0
-        if self.rotateAxis != 0:
-            self.rightSign = self.rotateAxis / fabs(self.rotateAxis)
-        else:
-            self.rightSign = 0
-
-        if self.xbox.getRawButton(9):
-            self.Compressor.stop()
-        elif self.xbox.getRawButton(10):
+        if self.xbox.getRawButton(1):
             self.Compressor.start()
-        elif self.xbox.getRawButton(3):  # open claw
-            self.DoubleSolenoid.set(wpilib.DoubleSolenoid.Value.kForward)
-        elif self.xbox.getRawButton(2):  # close claw
-            self.DoubleSolenoid.set(wpilib.DoubleSolenoid.Value.kReverse)
+        elif self.xbox.getRawButton(2):
+            self.Compressor.stop()
 
-        self.drive.arcadeDrive(-self.leftSign * (self.driveAxis ** 2), self.rightSign * (self.rotateAxis ** 2))
+            # gear shift toggle - press trigger on joystick to toggle
+        if self.xbox.getRawButton(3):
+            self.DoubleSolenoidGear.set(wpilib.DoubleSolenoid.Value.kForward)
+        elif self.xbox.getRawButton(4):
+            self.DoubleSolenoidGear.set(wpilib.DoubleSolenoid.Value.kReverse)
 
+        self.leftAxis = self.leftJoystick.getRawAxis(1)
+        self.rightAxis = self.rightJoystick.getRawAxis(1)
+        self.rotateAxis = self.leftJoystick.getRawAxis(2)
 
+        if self.driveButtonStatus.on:
+            self.drive.tankDrive(-self.rightAxis * 0.65, -self.leftAxis * 0.65)
+        elif self.driveButtonStatus.off:
+            self.drive.arcadeDrive(-self.leftAxis * 0.65, self.rotateAxis * 0.65)
 
 if __name__ == '__main__':
-    wpilib.run(MyRobot)
+  wpilib.run(MyRobot)

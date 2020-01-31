@@ -2,7 +2,7 @@ import wpilib
 from wpilib.drive import DifferentialDrive
 from robotpy_ext.control.toggle import Toggle
 from ctre import *
-
+from sensors.rev_color_sensor import REV_Color_Sensor_V3
 
 class MyRobot(wpilib.TimedRobot):
 
@@ -38,6 +38,8 @@ class MyRobot(wpilib.TimedRobot):
         self.enable = self.Compressor.getPressureSwitchValue()
         self.DoubleSolenoidGear = wpilib.DoubleSolenoid(0, 1)  # gear shifting
         self.Compressor.start()  # starts compressor to intake air
+        
+        self.colorsensor = REV_Color_Sensor_V3(wpilib.I2C.Port.kOnboard)
 
     def autonomousInit(self):
         self.timer.reset()
@@ -51,6 +53,7 @@ class MyRobot(wpilib.TimedRobot):
 
     def teleopInit(self):
         ''' function that is run at the beginning of the tele-operated phase '''
+        self.colorsensor.enable()
         pass
 
     def teleopPeriodic(self):

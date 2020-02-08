@@ -1,163 +1,79 @@
 import wpilib
-from wpilib.drive import DifferentialDrive
 from networktables import NetworkTables
-import logging
-from wpilib import DriverStation
-from math import *
-from robotpy_ext.control.button_debouncer import ButtonDebouncer
+from ctre import *
 from robotpy_ext.control.toggle import Toggle
+from math import *
 
 
 class MyRobot(wpilib.TimedRobot):
+    ''' robot program starts here '''
 
     def robotInit(self):
-        """Robot initialization function"""
+        ''' function that is run at the beginning of the match '''
+        self.bottomShooterEncoder = WPI_TalonSRX(7)
+        self.topShooter = WPI_TalonSRX(6)
+        self.bottomShooter = WPI_TalonSRX(4)
+        self.topShooterEncoder = WPI_TalonSRX(5)
 
-        # object that handles basic drive operations
-        self.rearLeftMotor = wpilib.Spark(0)
-        self.frontLeftMotor = wpilib.Spark(1)
-        self.frontRightMotor = wpilib.Spark(3)
-        self.rearRightMotor = wpilib.Spark(2)
+        self.xbox = wpilib.Joystick(2) # controller for shooter
 
-        # defining motor groups
-        self.left = wpilib.SpeedControllerGroup(self.frontLeftMotor, self.rearLeftMotor)
-        self.right = wpilib.SpeedControllerGroup(self.frontRightMotor, self.rearRightMotor)
+        self.topShooters = wpilib.SpeedControllerGroup(self.topShooter, self.topShooterEncoder)
+        self.bottomShooters = wpilib.SpeedControllerGroup(self.bottomShooter, self.bottomShooterEncoder)
 
-        self.drive = DifferentialDrive(self.left, self.right)
-        self.drive.setExpiration(0.1)
-
-        # defines timer for autonomous
-        self.timer = wpilib.Timer()
-
-        # joystick 0, 1, and 2 on the driver station
-        self.leftStick = wpilib.Joystick(0)
-        self.rightStick = wpilib.Joystick(1)
-        self.xbox = wpilib.Joystick(2)
-
-        self.testButton = Toggle(self.rightStick, 12)
-
-        # Button box
-        self.buttonBox = wpilib.Joystick(3)
-        self.buttonStatus = False
-
-        # pneumatics init
-        self.Compressor = wpilib.Compressor(0)
-        self.Compressor.setClosedLoopControl(True)
-        self.enable = self.Compressor.getPressureSwitchValue()
-        self.DoubleSolenoid = wpilib.DoubleSolenoid(0, 1)
-        self.Compressor.start()
-
-        self.sensor = wpilib.AnalogInput(0)
-        self.sensor.getVoltage()
-
-        '''Smart Dashboard'''
-        # connection for logging & Smart Dashboard
-        logging.basicConfig(level=logging.DEBUG)
-        self.sd = NetworkTables.getTable('SmartDashboard')
+        self.dash = NetworkTables.getTable("limelight")
+        self.dashboard = NetworkTables.getTable('SmartDashboard')
         NetworkTables.initialize(server='10.99.91.2')
 
-        self.ds = DriverStation.getInstance()
-        self.sd.putString("TX2State", "Disable")
+        self.topButtonStatus = Toggle(self.xbox, 1)
+        self.bottomButtonStatus = Toggle(self.xbox, 4)
+
+        # PID settings
+        kP = 0.0
+        kI = 0.0
+        kD = 0.0
 
     def autonomousInit(self):
-        """This function is run once each time the robot enters autonomous mode."""
-        self.timer.reset()
-        self.timer.start()
-
-        self.Compressor.stop()
+        ''' function that is run at the beginning of the autonomous phase '''
+        pass
 
     def autonomousPeriodic(self):
-        """This function is called periodically during autonomous."""
-
-        # if self.rightStick.getRawButtonPressed(12):
-        #     self.buttonStatus = not self.buttonStatus
-        #
-        # if self.buttonStatus is True:
-        #     if self.timer.get() <= 10:
-        #         self.drive.tankDrive(0.5, 0.5)
-        #     elif self.timer.get() >= 10:
-        #         self.drive.tankDrive(0, 0)
-        #         self.buttonStatus = False
-
-        if self.testButton.on:
-            self.drive.tankDrive(0.5, 0.5)
-        elif self.testButton.off:
-            self.drive.tankDrive(-0.5, -0.5)
-        else:
-            self.drive.tankDrive(0, 0)
-
-        def gearTest():
-            if self.timer.get() <= 1800:
-                self.Compressor.start()
-                self.rearLeftMotor.set(0.85)
-                self.frontLeftMotor.set(0.85)
-                self.frontRightMotor.set(0.85)
-                self.rearRightMotor.set(0.85)
-            else:
-                self.Compressor.stop()
-                self.rearLeftMotor.set(0)
-                self.frontLeftMotor.set(0)
-                self.frontRightMotor.set(0)
-                self.rearRightMotor.set(0)
-
-        def toggleTest():
-            if self.timer.get() <= 3:
-                self.drive.tankDrive(0.5, 0.5)
-            elif self.timer.get() > 3:
-                self.buttonStatus = False
-                self.timer.reset()
-
-        if self.buttonBox.getRawButtonPressed(7):
-            self.buttonStatus = not self.buttonStatus
-
-        if self.buttonStatus is True:
-            toggleTest()
-
-    def disabledInit(self):
-        self.sd.putString("TX2State", "Disable")
+        ''' function that is run periodically during the autonomous phase '''
+        pass
 
     def teleopInit(self):
-        """Executed at the start of teleop mode"""
-        self.drive.setSafetyEnabled(True)
+        ''' function that is run at the beginning of the tele-operated phase '''
+        pass
 
     def teleopPeriodic(self):
-        """Runs the motors with tank steering"""
+        ''' function that is run periodically during the tele-operated phase '''
+        if self.topButtonStatus.on:
+            self.topShooters.set(0.1)
+        elif self.topButtonStatus.off:
+            self.topShooters.set(-0.1)
+        elif self.xbox.getRawButton(3):
+            self.topShooters.set(0)
 
-        self.sd.putString("TX2State", "Enable")
-        self.sd.getString("TX2Num", "Not Found")
+        if self.bottomButtonStatus.on:
+            self.bottomShooters.set(0.1)
+        elif self.bottomButtonStatus.off:
+            self.bottomShooters.set(-0.1)
+        elif self.xbox.getRawButton(2):
+            self.bottomShooters.set(0)
 
-        self.driveAxis = self.rightStick.getRawAxis(1)
-        self.rotateAxis = self.rightStick.getRawAxis(2)
+        self.topValue = fabs((self.topShooterEncoder.getSelectedSensorVelocity()) * (600 / 4096))
+        self.bottomValue = fabs((self.bottomShooterEncoder.getSelectedSensorVelocity()) * (600 / 4096))
 
-        # # drives drive system using tank steering
-        # if self.DoubleSolenoidOne.get() == 1:  # if on high gear
-        #     self.divisor = 1.2  # 90% of high speed
-        # elif self.DoubleSolenoidOne.get() == 2:  # if on low gear
-        #     self.divisor = 1.2  # normal slow speed
-        # else:
-        #     self.divisor = 1.0
+        self.dashboard.putNumber("Top Encoder", self.topValue)
+        self.dashboard.putNumber("Bottom Encoder", self.bottomValue)
 
-        if self.driveAxis != 0:
-            self.leftSign = self.driveAxis / fabs(self.driveAxis)
-        else:
-            self.leftSign = 0
-        if self.rotateAxis != 0:
-            self.rightSign = self.rotateAxis / fabs(self.rotateAxis)
-        else:
-            self.rightSign = 0
+        self.angle = self.dash.getNumber('ty', 0)   # should get the angle from the limelight
 
-        if self.xbox.getRawButton(9):
-            self.Compressor.stop()
-        elif self.xbox.getRawButton(10):
-            self.Compressor.start()
-        elif self.xbox.getRawButton(3):  # open claw
-            self.DoubleSolenoid.set(wpilib.DoubleSolenoid.Value.kForward)
-        elif self.xbox.getRawButton(2):  # close claw
-            self.DoubleSolenoid.set(wpilib.DoubleSolenoid.Value.kReverse)
+        self.angleTwo = self.angle + 0.00000001  # plus 45 because that is what it will be mounted at I believe
+        self.distance = 12.5 / (tan(radians(self.angleTwo)))  # (tan(radians(self.angleTwo)))  # the math to calculate distance in python, also the 96.19 is from the real target height and about where the limelight is mounted on the CAD file.
 
-        self.drive.arcadeDrive(-self.leftSign * (self.driveAxis ** 2), self.rightSign * (self.rotateAxis ** 2))
-
+        self.dashboard.putNumber("Dist:", self.distance)  # writes to dashboard what the distance is
 
 
 if __name__ == '__main__':
+    ''' running the entire robot program '''
     wpilib.run(MyRobot)
